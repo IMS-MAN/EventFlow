@@ -38,6 +38,7 @@ using EventFlow.TestHelpers.Aggregates;
 using EventFlow.TestHelpers.Aggregates.Events;
 using EventFlow.TestHelpers.Aggregates.ValueObjects;
 using FluentAssertions;
+using Moq;
 using NUnit.Framework;
 
 namespace EventFlow.Tests.UnitTests.EventStores
@@ -80,7 +81,7 @@ namespace EventFlow.Tests.UnitTests.EventStores
         private EventStoreBase CreateStore()
         {
             var aggregateFactory = Mock<IAggregateFactory>();
-            var serviceProvider = Mock<IServiceProvider>();
+            var serviceProvider = ArrangeServiceProvider();
             var metadataProviders = Enumerable.Empty<IMetadataProvider>();
             var snapshotStore = Mock<ISnapshotStore>();
             var factory = new DomainEventFactory();
@@ -132,6 +133,17 @@ namespace EventFlow.Tests.UnitTests.EventStores
                             .ConfigureAwait(false);
                 }).ConfigureAwait(false);
             }
+        }
+
+        private IServiceProvider ArrangeServiceProvider()
+        {
+            var serviceProviderMock = InjectMock<IServiceProvider>();
+
+            serviceProviderMock
+                .Setup(p => p.GetService(typeof(IEnumerable<IEventUpgrader<ThingyAggregate, ThingyId>>)))
+                .Returns(Enumerable.Empty<IEventUpgrader>());
+
+            return serviceProviderMock.Object;
         }
 
         private static IEnumerable<Task> RunInParallel(Func<int, Task> action)

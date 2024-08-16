@@ -21,15 +21,15 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 using System;
-using EventFlow.Configuration;
 using EventFlow.EntityFramework.EventStores;
 using EventFlow.EntityFramework.ReadStores;
 using EventFlow.EntityFramework.ReadStores.Configuration;
-using EventFlow.EntityFramework.ReadStores.Configuration.Includes;
 using EventFlow.EntityFramework.SnapshotStores;
 using EventFlow.Extensions;
 using EventFlow.ReadStores;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace EventFlow.EntityFramework.Extensions
 {
@@ -48,7 +48,7 @@ namespace EventFlow.EntityFramework.Extensions
             where TDbContext : DbContext
         {
             return eventFlowOptions
-                .UseEventStore<EntityFrameworkEventPersistence<TDbContext>>();
+                .UseEventPersistence<EntityFrameworkEventPersistence<TDbContext>>();
         }
 
         public static IEventFlowOptions UseEntityFrameworkSnapshotStore<TDbContext>(
@@ -56,7 +56,8 @@ namespace EventFlow.EntityFramework.Extensions
             where TDbContext : DbContext
         {
             return eventFlowOptions
-                .UseSnapshotStore<EntityFrameworkSnapshotPersistence<TDbContext>>();
+                .UseSnapshotPersistence<EntityFrameworkSnapshotPersistence<TDbContext>>(ServiceLifetime.Transient);
+
         }
 
         public static IEventFlowOptions UseEntityFrameworkReadModel<TReadModel, TDbContext>(
@@ -67,12 +68,12 @@ namespace EventFlow.EntityFramework.Extensions
             return eventFlowOptions
                 .RegisterServices(f =>
                 {
-                    f.Register<IEntityFrameworkReadModelStore<TReadModel>,
+                    f.TryAddTransient<IEntityFrameworkReadModelStore<TReadModel>,
                         EntityFrameworkReadModelStore<TReadModel, TDbContext>>();
-                    f.Register<IApplyQueryableConfiguration<TReadModel>>(_ => 
-                        new EntityFrameworkReadModelConfiguration<TReadModel>(), Lifetime.Singleton);
-                    f.Register<IReadModelStore<TReadModel>>(r =>
-                        r.Resolver.Resolve<IEntityFrameworkReadModelStore<TReadModel>>());
+                    f.TryAddSingleton<IApplyQueryableConfiguration<TReadModel>>(_ =>
+                        new EntityFrameworkReadModelConfiguration<TReadModel>());
+                    f.TryAddTransient<IReadModelStore<TReadModel>>(r =>
+                        r.GetRequiredService<IEntityFrameworkReadModelStore<TReadModel>>());
                 })
                 .UseReadStoreFor<IEntityFrameworkReadModelStore<TReadModel>, TReadModel>();
         }
@@ -94,18 +95,18 @@ namespace EventFlow.EntityFramework.Extensions
             return eventFlowOptions
                 .RegisterServices(f =>
                 {
-                    f.Register<IEntityFrameworkReadModelStore<TReadModel>,
+                    f.TryAddTransient<IEntityFrameworkReadModelStore<TReadModel>,
                         EntityFrameworkReadModelStore<TReadModel, TDbContext>>();
-                    f.Register(_ =>
+                    f.TryAddSingleton(_ =>
                     {
                         var readModelConfig = new EntityFrameworkReadModelConfiguration<TReadModel>();
                         return configure != null
                             ? configure(readModelConfig)
                             : readModelConfig;
 
-                    }, Lifetime.Singleton);
-                    f.Register<IReadModelStore<TReadModel>>(r =>
-                        r.Resolver.Resolve<IEntityFrameworkReadModelStore<TReadModel>>());
+                    });
+                    f.TryAddTransient<IReadModelStore<TReadModel>>(r =>
+                        r.GetRequiredService<IEntityFrameworkReadModelStore<TReadModel>>());
                 })
                 .UseReadStoreFor<IEntityFrameworkReadModelStore<TReadModel>, TReadModel>();
         }
@@ -129,17 +130,17 @@ namespace EventFlow.EntityFramework.Extensions
             return eventFlowOptions
                 .RegisterServices(f =>
                 {
-                    f.Register<IEntityFrameworkReadModelStore<TReadModel>,
+                    f.TryAddTransient<IEntityFrameworkReadModelStore<TReadModel>,
                         EntityFrameworkReadModelStore<TReadModel, TDbContext>>();
-                    f.Register(_ =>
+                    f.TryAddSingleton(_ =>
                     {
                         var readModelConfig = new EntityFrameworkReadModelConfiguration<TReadModel>();
                         return configure != null
                             ? configure(readModelConfig)
                             : readModelConfig;
-                    }, Lifetime.Singleton);
-                    f.Register<IReadModelStore<TReadModel>>(r =>
-                        r.Resolver.Resolve<IEntityFrameworkReadModelStore<TReadModel>>());
+                    });
+                    f.TryAddTransient<IReadModelStore<TReadModel>>(r =>
+                        r.GetRequiredService<IEntityFrameworkReadModelStore<TReadModel>>());
                 })
                 .UseReadStoreFor<IEntityFrameworkReadModelStore<TReadModel>, TReadModel, TReadModelLocator>();
         }
@@ -153,24 +154,39 @@ namespace EventFlow.EntityFramework.Extensions
             return eventFlowOptions
                 .RegisterServices(f =>
                 {
-                    f.Register<IEntityFrameworkReadModelStore<TReadModel>,
+                    f.TryAddTransient<IEntityFrameworkReadModelStore<TReadModel>,
                         EntityFrameworkReadModelStore<TReadModel, TDbContext>>();
-                    f.Register<IApplyQueryableConfiguration<TReadModel>>(_ => 
-                        new EntityFrameworkReadModelConfiguration<TReadModel>(), Lifetime.Singleton);
-                    f.Register<IReadModelStore<TReadModel>>(r =>
-                        r.Resolver.Resolve<IEntityFrameworkReadModelStore<TReadModel>>());
+                    f.TryAddSingleton<IApplyQueryableConfiguration<TReadModel>>(_ => 
+                        new EntityFrameworkReadModelConfiguration<TReadModel>());
+                    f.TryAddTransient<IReadModelStore<TReadModel>>(r =>
+                        r.GetRequiredService<IEntityFrameworkReadModelStore<TReadModel>>());
                 })
                 .UseReadStoreFor<IEntityFrameworkReadModelStore<TReadModel>, TReadModel, TReadModelLocator>();
         }
 
         public static IEventFlowOptions AddDbContextProvider<TDbContext, TContextProvider>(
             this IEventFlowOptions eventFlowOptions,
-            Lifetime lifetime = Lifetime.AlwaysUnique)
+            ServiceLifetime lifetime = ServiceLifetime.Transient)
             where TContextProvider : class, IDbContextProvider<TDbContext>
             where TDbContext : DbContext
         {
             return eventFlowOptions.RegisterServices(s =>
-                s.Register<IDbContextProvider<TDbContext>, TContextProvider>(lifetime));
+            {
+                switch (lifetime)
+                {
+                    case ServiceLifetime.Singleton:
+                        s.AddSingleton<IDbContextProvider<TDbContext>, TContextProvider>();
+                        break;
+                    case ServiceLifetime.Scoped:
+                        s.AddScoped<IDbContextProvider<TDbContext>, TContextProvider>();
+                        break;
+                    case ServiceLifetime.Transient:
+                        s.AddTransient<IDbContextProvider<TDbContext>, TContextProvider>();
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException(nameof(lifetime), lifetime, null);
+                }
+            });
         }
     }
 }

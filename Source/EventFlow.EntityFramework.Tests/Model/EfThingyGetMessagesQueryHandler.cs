@@ -47,6 +47,7 @@ namespace EventFlow.EntityFramework.Tests.Model
             using (var context = _dbContextProvider.CreateContext())
             {
                 var entities = await context.ThingyMessages
+                    .AsQueryable()
                     .Where(m => m.ThingyId == query.ThingyId.Value)
                     .Select(m => m.ToThingyMessage())
                     .ToArrayAsync(cancellationToken);

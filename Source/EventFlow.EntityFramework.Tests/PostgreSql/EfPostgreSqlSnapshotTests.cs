@@ -20,13 +20,14 @@
 // IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-using EventFlow.Configuration;
+using System;
 using EventFlow.EntityFramework.Extensions;
 using EventFlow.EntityFramework.Tests.Model;
 using EventFlow.Extensions;
 using EventFlow.PostgreSql.TestsHelpers;
 using EventFlow.TestHelpers;
 using EventFlow.TestHelpers.Suites;
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
 namespace EventFlow.EntityFramework.Tests.PostgreSql
@@ -36,22 +37,23 @@ namespace EventFlow.EntityFramework.Tests.PostgreSql
     {
         private IPostgreSqlDatabase _testDatabase;
 
-        protected override IRootResolver CreateRootResolver(IEventFlowOptions eventFlowOptions)
+        protected override IServiceProvider Configure(IEventFlowOptions eventFlowOptions)
         {
             _testDatabase = PostgreSqlHelpz.CreateDatabase("eventflow-snapshots");
 
-            return eventFlowOptions
-                .RegisterServices(sr => sr.Register(c => _testDatabase.ConnectionString))
+            eventFlowOptions
+                .RegisterServices(sr => sr.AddTransient(c => _testDatabase.ConnectionString))
                 .ConfigureEntityFramework(EntityFrameworkConfiguration.New)
                 .AddDbContextProvider<TestDbContext, PostgreSqlDbContextProvider>()
-                .ConfigureForSnapshotStoreTest()
-                .CreateResolver();
+                .ConfigureForSnapshotStoreTest();
+
+            return base.Configure(eventFlowOptions);
         }
 
         [TearDown]
         public void TearDown()
         {
-            _testDatabase.DisposeSafe("Failed to delete database");
+            _testDatabase.DisposeSafe(LogHelper.For<EfPostgreSqlSnapshotTests>(), "Failed to delete database");
         }
     }
 }

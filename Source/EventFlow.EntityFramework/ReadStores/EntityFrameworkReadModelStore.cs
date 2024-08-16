@@ -33,11 +33,11 @@ using EventFlow.EntityFramework.Extensions;
 using EventFlow.EntityFramework.ReadStores.Configuration;
 using EventFlow.Exceptions;
 using EventFlow.Extensions;
-using EventFlow.Logs;
 using EventFlow.ReadStores;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Logging;
 
 namespace EventFlow.EntityFramework.ReadStores
 {
@@ -52,6 +52,7 @@ namespace EventFlow.EntityFramework.ReadStores
 
         private static readonly string ReadModelNameLowerCase = typeof(TReadModel).Name.ToLowerInvariant();
 
+        private readonly ILogger<EntityFrameworkReadModelStore<TReadModel, TDbContext>> _logger;
         private readonly IDbContextProvider<TDbContext> _contextProvider;
         private readonly int _deletionBatchSize;
         private readonly IReadModelFactory<TReadModel> _readModelFactory;
@@ -60,15 +61,16 @@ namespace EventFlow.EntityFramework.ReadStores
 
         public EntityFrameworkReadModelStore(
             IBulkOperationConfiguration bulkOperationConfiguration,
-            ILog log,
+            ILogger<EntityFrameworkReadModelStore<TReadModel, TDbContext>> logger,
             IReadModelFactory<TReadModel> readModelFactory,
             IApplyQueryableConfiguration<TReadModel> queryableConfiguration,
             IDbContextProvider<TDbContext> contextProvider,
             ITransientFaultHandler<IOptimisticConcurrencyRetryStrategy> transientFaultHandler)
-            : base(log)
+            : base(logger)
         {
             _readModelFactory = readModelFactory;
             _queryableConfiguration = queryableConfiguration;
+            _logger = logger;
             _contextProvider = contextProvider;
             _transientFaultHandler = transientFaultHandler;
             _deletionBatchSize = bulkOperationConfiguration.DeletionBatchSize;
@@ -152,8 +154,8 @@ namespace EventFlow.EntityFramework.ReadStores
                 })
                 .ConfigureAwait(false);
 
-            Log.Verbose(
-                "Purge {0} read models of type '{1}'",
+            _logger.LogTrace(
+                "Purge {RowsAffected} read models of type '{ReadModelName}'",
                 rowsAffected,
                 readModelName);
         }
@@ -170,14 +172,14 @@ namespace EventFlow.EntityFramework.ReadStores
 
             if (entity == null)
             {
-                Log.Verbose(() => $"Could not find any Entity Framework read model '{readModelType.PrettyPrint()}' with ID '{id}'");
+                _logger.LogTrace($"Could not find any Entity Framework read model '{readModelType.PrettyPrint()}' with ID '{id}'");
                 return ReadModelEnvelope<TReadModel>.Empty(id);
             }
 
             var entry = dbContext.Entry(entity);
             var version = descriptor.GetVersion(entry);
 
-            Log.Verbose(() => $"Found Entity Framework read model '{readModelType.PrettyPrint()}' with ID '{id}' and version '{version}'");
+            _logger.LogTrace($"Found Entity Framework read model '{readModelType.PrettyPrint()}' with ID '{id}' and version '{version}'");
 
             return version.HasValue
                 ? ReadModelEnvelope<TReadModel>.With(id, entity, version.Value)
@@ -194,7 +196,7 @@ namespace EventFlow.EntityFramework.ReadStores
 
             if (rowsAffected != 0)
             {
-                Log.Verbose($"Deleted Entity Framework read model '{id}' of type '{ReadModelNameLowerCase}'");
+                _logger.LogTrace($"Deleted Entity Framework read model '{id}' of type '{ReadModelNameLowerCase}'");
             }
         }
 
@@ -255,7 +257,7 @@ namespace EventFlow.EntityFramework.ReadStores
                 throw new OptimisticConcurrencyException(e.Message, e);
             }
 
-            Log.Verbose(() => $"Updated Entity Framework read model {typeof(TReadModel).PrettyPrint()} with ID '{readModelId}' to version '{readModelEnvelope.Version}'");
+            _logger.LogTrace($"Updated Entity Framework read model {typeof(TReadModel).PrettyPrint()} with ID '{readModelId}' to version '{readModelEnvelope.Version}'");
         }
 
         private static EntityDescriptor GetDescriptor(

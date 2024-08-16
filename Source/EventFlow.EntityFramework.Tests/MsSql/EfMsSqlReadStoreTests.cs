@@ -21,13 +21,13 @@
 // CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 using System;
-using EventFlow.Configuration;
 using EventFlow.EntityFramework.Extensions;
 using EventFlow.EntityFramework.Tests.Model;
 using EventFlow.Extensions;
 using EventFlow.TestHelpers;
 using EventFlow.TestHelpers.MsSql;
 using EventFlow.TestHelpers.Suites;
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
 namespace EventFlow.EntityFramework.Tests.MsSql
@@ -39,22 +39,23 @@ namespace EventFlow.EntityFramework.Tests.MsSql
 
         protected override Type ReadModelType => typeof(ThingyReadModelEntity);
 
-        protected override IRootResolver CreateRootResolver(IEventFlowOptions eventFlowOptions)
+        protected override IServiceProvider Configure(IEventFlowOptions eventFlowOptions)
         {
             _testDatabase = MsSqlHelpz.CreateDatabase("eventflow");
 
-            return eventFlowOptions
-                .RegisterServices(sr => sr.Register(c => _testDatabase.ConnectionString))
+            eventFlowOptions
+                .RegisterServices(sr => sr.AddTransient(c => _testDatabase.ConnectionString))
                 .ConfigureEntityFramework(EntityFrameworkConfiguration.New)
                 .AddDbContextProvider<TestDbContext, MsSqlDbContextProvider>()
-                .ConfigureForReadStoreTest()
-                .CreateResolver();
+                .ConfigureForReadStoreTest();
+
+            return base.Configure(eventFlowOptions);
         }
 
         [TearDown]
         public void TearDown()
         {
-            _testDatabase.DisposeSafe("Failed to delete database");
+            _testDatabase.DisposeSafe(LogHelper.For< EfMsSqlReadStoreTests>(), "Failed to delete database");
         }
     }
 }

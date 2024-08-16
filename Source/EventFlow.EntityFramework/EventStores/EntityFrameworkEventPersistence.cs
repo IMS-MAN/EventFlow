@@ -63,6 +63,7 @@ namespace EventFlow.EntityFramework.EventStores
 
             var entities = await context
                 .Set<EventEntity>()
+                .AsQueryable()
                 .OrderBy(e => e.GlobalSequenceNumber)
                 .Where(e => e.GlobalSequenceNumber >= startPosition)
                 .Take(pageSize)
@@ -124,6 +125,7 @@ namespace EventFlow.EntityFramework.EventStores
 
             var entities = await context
                 .Set<EventEntity>()
+                .AsQueryable()
                 .Where(e => e.AggregateId == id.Value
                             && e.AggregateSequenceNumber >= fromEventSequenceNumber)
                 .OrderBy(e => e.AggregateSequenceNumber)
@@ -136,9 +138,11 @@ namespace EventFlow.EntityFramework.EventStores
         {
             await using var context = _contextProvider.CreateContext();
 
-            var entities = await context.Set<EventEntity>()
+            var entities = await context
+                .Set<EventEntity>()
+                .AsQueryable()
                 .Where(e => e.AggregateId == id.Value)
-                .Select(e => new EventEntity {GlobalSequenceNumber = e.GlobalSequenceNumber})
+                .Select(e => new EventEntity { GlobalSequenceNumber = e.GlobalSequenceNumber })
                 .ToListAsync(cancellationToken);
 
             context.RemoveRange(entities);
@@ -148,6 +152,23 @@ namespace EventFlow.EntityFramework.EventStores
                 "Deleted entity with ID {Id} by deleting all of its {NumberOfEvents} events",
                 id,
                 rowsAffected);
+        }
+
+        public async Task<IReadOnlyCollection<ICommittedDomainEvent>> LoadCommittedEventsAsync(IIdentity id,
+            int fromEventSequenceNumber, int toEventSequenceNumber, CancellationToken cancellationToken)
+        {
+            await using var context = _contextProvider.CreateContext();
+
+            var entities = await context
+                .Set<EventEntity>()
+                .AsQueryable()
+                .Where(e => e.AggregateId == id.Value
+                            && e.AggregateSequenceNumber >= fromEventSequenceNumber
+                            && e.AggregateSequenceNumber <= toEventSequenceNumber)
+                .OrderBy(e => e.AggregateSequenceNumber)
+                .ToListAsync(cancellationToken);
+
+            return entities;
         }
     }
 }
