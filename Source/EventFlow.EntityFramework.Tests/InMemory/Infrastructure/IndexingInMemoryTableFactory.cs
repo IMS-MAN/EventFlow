@@ -22,6 +22,7 @@
 
 using System.Linq;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.EntityFrameworkCore.InMemory.Infrastructure.Internal;
 using Microsoft.EntityFrameworkCore.InMemory.Storage.Internal;
 using Microsoft.EntityFrameworkCore.Metadata;
 
@@ -30,6 +31,7 @@ namespace EventFlow.EntityFramework.Tests.InMemory.Infrastructure
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "EF1001:Internal EF Core API usage.", Justification = "Only for test")]
     public class IndexingInMemoryTableFactory : InMemoryTableFactory
     {
+#if NETCOREAPP3_1
         public IndexingInMemoryTableFactory(ILoggingOptions loggingOptions) : base(loggingOptions)
         {
         }
@@ -43,5 +45,21 @@ namespace EventFlow.EntityFramework.Tests.InMemory.Infrastructure
                 ? new IndexingInMemoryTable(innerTable, uniqueIndexes)
                 : innerTable;
         }
+#elif NET6_0_OR_GREATER
+        public IndexingInMemoryTableFactory(ILoggingOptions loggingOptions, IInMemorySingletonOptions options) : base(loggingOptions, options)
+        {
+        }
+
+#nullable enable
+        public override IInMemoryTable Create(IEntityType entityType, IInMemoryTable? baseTable)
+        {
+            var innerTable = base.Create(entityType, baseTable);
+            var uniqueIndexes = entityType.GetIndexes().Where(i => i.IsUnique).ToArray();
+
+            return uniqueIndexes.Any()
+                ? new IndexingInMemoryTable(innerTable, uniqueIndexes)
+                : innerTable;
+        }
+#endif
     }
 }
